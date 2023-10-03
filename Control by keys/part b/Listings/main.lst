@@ -1,0 +1,157 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 09:56:29 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <reg51.h>               // Include the 8051 microcontroller specific header file
+   2          #include "lcd.h"                 // Include the LCD library
+   3          #include <stdio.h>             // Include the intrinsic functions for controlling interrupts
+   4          
+   5          sbit Servo_motor_Pin = P2^0;     // Define a bit for the servo motor control pin
+   6          sbit key_1 = P3^1;               // Define a bit for the first external interrupt (Increment)
+   7          sbit key_2 = P3^0;               // Define a bit for the second external interrupt (Decrement)
+   8          
+   9          unsigned int servo_position = 0; // Variable to store the current servo motor position
+  10          unsigned int  ON_pulse, OFF_pulse; // Variables to store ON and OFF pulse durations for PWM
+  11          float DutyCycle;                 // Variable to store the duty cycle for PWM
+  12          
+  13          unsigned char degree_symb[8] = {0x06, 0x09, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00}; // Custom character for d
+             -egree symbol
+  14          
+  15          void Timer0_Intilization ()     // Function to initialize Timer0 for PWM generation
+  16          {
+  17   1          TMOD = 0x01;                // Timer0 in 16-bit mode 1 
+  18   1          TH0 = 0xB7;                 // Initial value for Timer0 High byte
+  19   1          TL0 = 0xFD;                 // Initial value for Timer0 Low byte
+  20   1          TR0 = 1;                    // Start Timer0
+  21   1          IE = 0x82;                  // Enable Timer0 interrupt
+  22   1      }
+  23          
+  24          void ISR_servo_moter() interrupt 1  // Timer0 Interrupt Service Routine (ISR) for PWM generation
+  25          { 
+  26   1          Servo_motor_Pin = ~Servo_motor_Pin ; // Toggle the servo motor control pin
+  27   1          
+  28   1          if (Servo_motor_Pin)
+  29   1          {
+  30   2              TH0 = ON_pulse >> 8;    // Set high byte for ON pulse duration
+  31   2              TL0 = ON_pulse;         // Set low byte for ON pulse duration
+  32   2          }
+  33   1          else
+  34   1          {
+  35   2              TH0 = OFF_pulse >> 8;   // Set high byte for OFF pulse duration
+  36   2              TL0 = OFF_pulse;        // Set low byte for OFF pulse duration
+  37   2          }
+  38   1      }
+  39          
+  40          
+  41          void lcd_disp_numb(unsigned int number,unsigned int width) {
+  42   1        
+  43   1          char buffer[8];                                                             // Create a character buff
+             -er to hold the formatted number
+  44   1          sprintf(buffer, "%*d", width, number);                                     // Format the number with s
+             -pecified width
+  45   1          lcd_write_string(buffer);                                                 // Display the formatted numb
+             -er on the LCD
+  46   1      }
+  47          
+  48          void lcd_Custom_Char(unsigned char loc, unsigned char *msg) {
+  49   1          unsigned char i;
+  50   1        
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 09:56:29 PAGE 2   
+
+  51   1          if (loc < 8) {
+  52   2              lcd_write_command(0x40 + (loc * 8));                          // Set the CGRAM address for the cus
+             -tom character
+  53   2              for (i = 0; i < 8; i++) {                                
+  54   3                  lcd_write_data(msg[i]);                                     // Write the custom character patt
+             -ern to CGRAM
+  55   3              }                   
+  56   2              lcd_write_command(0x80);                                      // Return to the LCD data address
+  57   2          }
+  58   1      }
+  59          
+  60          void Set_Duty_Cycle (float duty_cycle)             // Function to calculate ON and OFF pulse durations bas
+             -ed on duty cycle
+  61          {  
+  62   1          unsigned int Period;
+  63   1          Period = 65535 - 0xB7FD;                                     // Total time period for PWM
+  64   1                               
+  65   1          ON_pulse = ((Period / 100.0) * duty_cycle);                  // Calculate ON pulse duration
+  66   1          OFF_pulse = Period - ON_pulse;                             // Calculate OFF pulse duration
+  67   1          
+  68   1          ON_pulse = 65535 - ON_pulse;                                // Invert ON pulse duration
+  69   1          OFF_pulse = 65535 - OFF_pulse;                             // Invert OFF pulse duration
+  70   1      }
+  71          
+  72          void main (void)
+  73          {
+  74   1          lcd_init();                 // Initialize the LCD
+  75   1          Timer0_Intilization();            // Initialize Timer0 for PWM generation
+  76   1            
+  77   1          lcd_set_cursor(0, 1);                  // Set cursor to the first row and first column
+  78   1          lcd_write_string("Moter Angle");     // Display a message on the first row
+  79   1          Servo_motor_Pin = 0;
+  80   1          while (1)
+  81   1          {
+  82   2              if (key_1 == 0)             
+  83   2              {       
+  84   3                  delay_ms(200);               // Delay to debounce the button
+  85   3                  
+  86   3                  if (servo_position < 180)
+  87   3                  { 
+  88   4                      servo_position += 45;               // Increment the servo position
+  89   4                      lcd_set_cursor(2, 6);                 // Set cursor to the second row and 6th column
+  90   4                      lcd_disp_numb(servo_position, 3); // Display the servo position
+  91   4                      lcd_Custom_Char(1, degree_symb);   // Display the custom degree symbol
+  92   4                      lcd_set_cursor(2, 9);                 // Set cursor to the second row and 9th column
+  93   4                      lcd_write_data(1);                  // Write the custom degree symbol on the LCD
+  94   4                      delay_ms(500);                  // Delay for stability
+  95   4                  }     
+  96   3                  
+  97   3                  while (key_1 == 0);             // Wait until the button is released
+  98   3              }
+  99   2              
+ 100   2              if (key_2 == 0)                  
+ 101   2              {     
+ 102   3                  delay_ms(200);              // Delay to debounce the button
+ 103   3                  if (servo_position > 0)
+ 104   3                  {
+ 105   4                      servo_position -= 45;      // Decrement the servo position
+ 106   4                      lcd_set_cursor(2, 6);                  // Set cursor to the second row and 6th column
+ 107   4                      lcd_disp_numb(servo_position, 3);   // Display the servo position
+ 108   4                      lcd_Custom_Char(1, degree_symb);     // Display the custom degree symbol
+ 109   4                      lcd_set_cursor(2, 9);                     // Set cursor to the second row and 9th column
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 09:56:29 PAGE 3   
+
+ 110   4                      lcd_write_data(1);             // Write the custom degree symbol on the LCD
+ 111   4                      delay_ms(500);                   // Delay for stability
+ 112   4                  }   
+ 113   3                  while (key_2 == 0);                 // Wait until the button is released
+ 114   3              }
+ 115   2              
+ 116   2              DutyCycle = ((servo_position + 45) / 180.0) * 10;                // Calculate the duty cycle for P
+             -WM
+ 117   2              Set_Duty_Cycle(DutyCycle);                                       // Set the PWM duty cycle
+ 118   2              delay_ms(500);                                              // Delay for stability
+ 119   2          }
+ 120   1      }
+ 121          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    455    ----
+   CONSTANT SIZE    =     16    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     18      18
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

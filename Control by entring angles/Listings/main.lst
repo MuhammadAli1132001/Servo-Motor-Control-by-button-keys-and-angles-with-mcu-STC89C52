@@ -1,0 +1,275 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 11:51:18 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <reg51.h>               // Include the 8051 microcontroller specific header file
+   2          #include "lcd.h"                 // Include the LCD library
+   3          #include <stdio.h>    
+   4          #include <intrins.h>
+   5          #include <stdlib.h>
+   6          
+   7          #define  buzzer P1        // Define a bit for the buzzer
+   8          
+   9          sbit Servo_motor_Pin = P2^0; // Define a bit for the servo motor control pin
+  10          sbit column1 = P1^0; // Define columns of the 4x4 keypad
+  11          sbit column2 = P1^1;
+  12          sbit column3 = P1^2;
+  13          sbit column4 = P1^3;
+  14          
+  15          sbit row1 = P1^4; // Define rows of the 4x4 keypad
+  16          sbit row2 = P1^5;
+  17          sbit row3 = P1^6;
+  18          sbit row4 = P1^7;
+  19          
+  20          
+  21          char keypad[4][4] = {
+  22              {'D', '#', '0', '*'},
+  23              {'C', '9', '8', '7'},
+  24              {'B', '6', '5', '4'},
+  25              {'A','3','2', '1'}
+  26          };
+  27          
+  28          unsigned int  ON_pulse, OFF_pulse; // Variables to store ON and OFF pulse durations for PWM
+  29          float DutyCycle;                 // Variable to store the duty cycle for PWM
+  30          
+  31          unsigned char degree_symb[8] = {0x06, 0x09, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00}; // Custom character for d
+             -egree symbol
+  32          
+  33          volatile unsigned int target_position = 0; // Variable to store the target servo position
+  34          
+  35          
+  36          void Timer0_Init() {
+  37   1        
+  38   1          TMOD = 0x01; // Timer0 in 16-bit mode
+  39   1          TH0 = 0xB7;  // Initial value for Timer0 High byte
+  40   1          TL0 = 0xFD;  // Initial value for Timer0 Low byte
+  41   1          TR0 = 1;     // Start Timer0
+  42   1          IE= 0x82;     // Enable Timer0 interrupt
+  43   1      }
+  44          
+  45          // Timer0 Interrupt Service Routine (ISR) for servo control
+  46          void ISR_servo_moter() interrupt 1  // Timer0 Interrupt Service Routine (ISR) for PWM generation
+  47          { 
+  48   1          Servo_motor_Pin = ~Servo_motor_Pin ; // Toggle the servo motor control pin
+  49   1          
+  50   1          if (Servo_motor_Pin)
+  51   1          {
+  52   2              TH0 = ON_pulse >> 8;    // Set high byte for ON pulse duration
+  53   2              TL0 = ON_pulse;         // Set low byte for ON pulse duration
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 11:51:18 PAGE 2   
+
+  54   2          }
+  55   1          else
+  56   1          {
+  57   2              TH0 = OFF_pulse >> 8;   // Set high byte for OFF pulse duration
+  58   2              TL0 = OFF_pulse;        // Set low byte for OFF pulse duration
+  59   2          }
+  60   1      }
+  61          
+  62          void Set_Duty_Cycle (float duty_cycle)  // Function to calculate ON and OFF pulse durations based on duty 
+             -cycle
+  63          {  
+  64   1          unsigned int Period;
+  65   1          Period = 65535 - 0xB7FD;                         // Total time period for PWM
+  66   1          
+  67   1          ON_pulse = ((Period / 100.0) * duty_cycle);   // Calculate ON pulse duration
+  68   1          OFF_pulse = Period - ON_pulse;               // Calculate OFF pulse duration
+  69   1          
+  70   1          ON_pulse = 65535 - ON_pulse;                  // Invert ON pulse duration
+  71   1          OFF_pulse = 65535 - OFF_pulse;               // Invert OFF pulse duration
+  72   1      }
+  73          
+  74          
+  75          
+  76          // Function to make a short beep sound on the buzzer
+  77          void BeepShort() {
+  78   1          buzzer = 1; // Turn on the buzzer
+  79   1          delay_ms(10); // Beep duration
+  80   1          buzzer = 0; // Turn off the buzzer
+  81   1      }
+  82          
+  83          // Function to make a long beep sound on the buzzer
+  84          void BeepLong() {
+  85   1          buzzer = 1; // Turn on the buzzer
+  86   1          delay_ms(100); // Beep duration
+  87   1          buzzer = 0; // Turn off the buzzer
+  88   1      }
+  89          
+  90          
+  91          void lcd_disp_numb(unsigned int number,unsigned int width) {
+  92   1        
+  93   1          char buffer[8];                                                             // Create a character buff
+             -er to hold the formatted number
+  94   1          sprintf(buffer, "%*d", width, number);
+  95   1          lcd_clear();
+  96   1          lcd_set_cursor(1, 0);                                              // Set cursor to the second row and
+             - first column
+  97   1          lcd_write_string("Angle:");                               // Display input prompt
+  98   1          lcd_set_cursor(1,6);                                              // Format the number with specified w
+             -idth
+  99   1          lcd_write_string(buffer);                                             // Display the formatted number o
+             -n the LCD
+ 100   1      }
+ 101          
+ 102          void lcd_Custom_Char(unsigned char loc, unsigned char *msg) {
+ 103   1          unsigned char i;
+ 104   1        
+ 105   1          if (loc < 8) {
+ 106   2              lcd_write_command(0x40 + (loc * 8));  // Set the CGRAM address for the custom character
+ 107   2              for (i = 0; i < 8; i++) {
+ 108   3                  lcd_write_data(msg[i]);  // Write the custom character pattern to CGRAM
+ 109   3              }
+ 110   2              lcd_write_command(0x80);  // Return to the LCD data address
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 11:51:18 PAGE 3   
+
+ 111   2          }
+ 112   1      }
+ 113          
+ 114          
+ 115          
+ 116          char GetKeyPressed() {
+ 117   1          char key = 0;
+ 118   1          row1 = 0; // Enable the first row
+ 119   1          row2 = 1;
+ 120   1          row3 = 1;
+ 121   1          row4 = 1;
+ 122   1          if (column1 == 0) key = keypad[0][0];
+ 123   1          if (column2 == 0) key = keypad[0][1];
+ 124   1          if (column3 == 0) key = keypad[0][2];
+ 125   1          if (column4 == 0) key = keypad[0][3];
+ 126   1          row1 = 1; // Disable the first row
+ 127   1          
+ 128   1          row1 = 1;
+ 129   1          row2 = 0; // Enable the second row
+ 130   1          row3 = 1;
+ 131   1          row4 = 1;
+ 132   1          if (column1 == 0) key = keypad[1][0];
+ 133   1          if (column2 == 0) key = keypad[1][1];
+ 134   1          if (column3 == 0) key = keypad[1][2];
+ 135   1          if (column4 == 0) key = keypad[1][3];
+ 136   1          row2 = 1; // Disable the second row
+ 137   1          
+ 138   1          row1 = 1;
+ 139   1          row2 = 1;
+ 140   1          row3 = 0; // Enable the third row
+ 141   1          row4 = 1;
+ 142   1          if (column1 == 0) key = keypad[2][0];
+ 143   1          if (column2 == 0) key = keypad[2][1];
+ 144   1          if (column3 == 0) key = keypad[2][2];
+ 145   1          if (column4 == 0) key = keypad[2][3];
+ 146   1          row3 = 1; // Disable the third row
+ 147   1          
+ 148   1          row1 = 1;
+ 149   1          row2 = 1;
+ 150   1          row3 = 1;
+ 151   1          row4 = 0; // Enable the fourth row
+ 152   1          if (column1 == 0) key = keypad[3][0];
+ 153   1          if (column2 == 0) key = keypad[3][1];
+ 154   1          if (column3 == 0) key = keypad[3][2];
+ 155   1          if (column4 == 0) key = keypad[3][3];
+ 156   1          row4 = 1; // Disable the fourth row
+ 157   1          
+ 158   1      
+ 159   1          return key;
+ 160   1      }
+ 161          
+ 162          
+ 163          unsigned int ReadAngleFromKeypad() {
+ 164   1          char angle_str[4];
+ 165   1          char key;
+ 166   1          unsigned int angle = 0;
+ 167   1          unsigned int length = 0;
+ 168   1          
+ 169   1          while (1) {
+ 170   2              key = GetKeyPressed();
+ 171   2              
+ 172   2              if (key != 0 && key != '#' && length < 3) {
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 11:51:18 PAGE 4   
+
+ 173   3                  angle_str[length++] = key;
+ 174   3                            
+ 175   3                  lcd_blink_cursor();
+*** WARNING C206 IN LINE 175 OF main.c: 'lcd_blink_cursor': missing function-prototype
+ 176   3                  lcd_set_cursor(0, 12 + length);                  // Set cursor to the first row and first column
+ 177   3                  lcd_write_data(key);                   // Display the pressed key on an LCD (if available)
+ 178   3                  delay_ms(100);                        // Debounce delay 
+ 179   3              }
+ 180   2              else if (key == '#') {
+ 181   3                  angle_str[length] = '\0';         // Null-terminate the string
+ 182   3                  angle = atoi(angle_str);         // Convert the string to an integer
+ 183   3                  break;
+ 184   3              }
+ 185   2          }
+ 186   1          lcd_clear();
+ 187   1          return angle;
+ 188   1      }
+ 189          
+ 190          
+ 191          
+ 192          void main (void)
+ 193          {    
+ 194   1        unsigned int entered_angle;
+ 195   1        
+ 196   1        lcd_init();
+ 197   1        Timer0_Init(); // Initialize Timer0 for servo control
+ 198   1      
+ 199   1          
+ 200   1         
+ 201   1      
+ 202   1      
+ 203   1          while (1) {
+ 204   2            
+ 205   2          lcd_clear();
+ 206   2          lcd_set_cursor(0, 0);                  // Set cursor to the first row and first column
+ 207   2          lcd_write_string("enter Angle:");    // Display a message on the first row
+ 208   2      
+ 209   2          entered_angle = ReadAngleFromKeypad();
+ 210   2      
+ 211   2              if (entered_angle >= 0 && entered_angle <= 180) {
+ 212   3                
+ 213   3                                                     
+ 214   3                  lcd_disp_numb(entered_angle, 3);                                 // Display the entered angle
+ 215   3                  lcd_set_cursor(1,6);                                              // Format the number with spe
+             -cified width
+ 216   3                  lcd_Custom_Char(1,degree_symb);
+ 217   3                  lcd_set_cursor(2,9);
+ 218   3                  lcd_write_data(1);
+ 219   3           //       BeepShort();                               // Short beep as feedback
+ 220   3              } 
+ 221   2              
+ 222   2              else {
+ 223   3                
+ 224   3                  
+ 225   3                  lcd_clear();                             // Entered angle is out of range, display an error message
+ 226   3                  lcd_set_cursor(1, 1);                       // Set cursor to the second row and first column
+ 227   3                  lcd_write_string("Error:Out-Range");
+ 228   3               //   BeepLong();                                // Long beep to indicate an error
+ 229   3              }
+ 230   2              
+ 231   2              DutyCycle = ((entered_angle) / 180.0) * 10; // Calculate the duty cycle for PWM
+ 232   2              Set_Duty_Cycle(DutyCycle);                         // Set the PWM duty cycle
+C51 COMPILER V9.60.7.0   MAIN                                                              09/05/2023 11:51:18 PAGE 5   
+
+ 233   2              delay_ms(500);                    // Delay for stability
+ 234   2          }
+ 235   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    665    ----
+   CONSTANT SIZE    =     40    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     34      29
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
